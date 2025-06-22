@@ -3,27 +3,41 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-<title>Stickman Spider Swing</title>
+<title>Stickman Spider Swing - Improved Physics & Score</title>
 <style>
   body, html {
     margin: 0; padding: 0; overflow: hidden;
     background: linear-gradient(to top, #001022 0%, #87ceeb 100%);
     font-family: Arial, sans-serif;
     -webkit-tap-highlight-color: transparent;
+    user-select: none;
   }
   canvas {
     display: block;
     background: transparent;
     touch-action: none;
   }
+  #score {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: white;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 5px #000;
+    user-select: none;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
+<div id="score">Score: 0</div>
 <canvas id="game"></canvas>
 <script>
 (() => {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -32,170 +46,154 @@
   resize();
   window.addEventListener('resize', resize);
 
-  // Game constants
-  const gravity = 0.8;
-  const ropeLengthDefault = 250;
-  const momentumBoost = 0.0025;
-  const maxAngularVelocity = 0.1;
+  // Constants
+  const gravity = 0.6;
+  const ropeLength = 300;
+  const maxAngularVelocity = 0.2;
+  const swingForce = 0.0012;
+  const friction = 0.995;
 
-  // Stickman Spider-Man state
-  let swinging = false;
-  let ropeLength = ropeLengthDefault;
+  // State
+  let isSwinging = true;
+  let isHolding = false;
 
-  const spider = {
-    x: 150,
-    y: canvas.height / 2,
+  // Rope anchor point fixed top center-ish
+  let anchor = {
+    x: canvas.width / 3,
+    y: 150,
+  };
+
+  // Spiderman pendulum state
+  let angle = Math.PI / 4; // pendulum angle from vertical (radians)
+  let angularVelocity = 0;
+  let angularAcceleration = 0;
+
+  // Position of spider
+  let spider = {
+    x: anchor.x + ropeLength * Math.sin(angle),
+    y: anchor.y + ropeLength * Math.cos(angle),
     radius: 20,
     vx: 0,
     vy: 0,
-    angle: Math.PI / 3,       // Start angle
-    angleVelocity: 0,
   };
 
-  const anchor = {
-    x: spider.x,
-    y: 120,
-  };
-
-  // Buildings setup (simplified for clarity)
-  const buildings = [];
-  const buildingWidth = 90;
-  const buildingGap = 200;
-
-  function generateBuildings() {
-    buildings.length = 0;
-    let x = 0;
-    while (x < canvas.width * 4) {
-      const height = 150 + Math.random() * 250;
-      buildings.push({ x, height });
-      x += buildingWidth + buildingGap;
-    }
-  }
-  generateBuildings();
-
+  // Score and camera
+  let score = 0;
   let cameraX = 0;
 
-  // Touch controls: holding adds momentum
-  let holding = false;
+  // Input handlers
   canvas.addEventListener('touchstart', e => {
     e.preventDefault();
-    holding = true;
-    swinging = true;
+    if (isSwinging) isHolding = true;
   });
   canvas.addEventListener('touchend', e => {
     e.preventDefault();
-    holding = false;
-    swinging = false;
-    // Launch forward using angular velocity converted to linear
-    const speed = ropeLength * spider.angleVelocity;
-    spider.vx = speed * Math.cos(spider.angle + Math.PI / 2);
-    spider.vy = speed * Math.sin(spider.angle + Math.PI / 2);
+    if (isSwinging) {
+      isHolding = false;
+      isSwinging = false;
+      // Convert angular velocity to linear velocity on release
+      spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI / 2);
+      spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI / 2);
+    }
   });
 
-  // Mouse fallback for desktop testing
+  // Mouse fallback
   canvas.addEventListener('mousedown', e => {
-    holding = true;
-    swinging = true;
+    if (isSwinging) isHolding = true;
   });
   canvas.addEventListener('mouseup', e => {
-    holding = false;
-    swinging = false;
-    const speed = ropeLength * spider.angleVelocity;
-    spider.vx = speed * Math.cos(spider.angle + Math.PI / 2);
-    spider.vy = speed * Math.sin(spider.angle + Math.PI / 2);
+    if (isSwinging) {
+      isHolding = false;
+      isSwinging = false;
+      spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI / 2);
+      spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI / 2);
+    }
   });
 
-  function update() {
-    if (swinging) {
-      // Swinging physics with momentum build-up
-      const angleAccel = -0.015 * Math.sin(spider.angle); // pendulum force
-      spider.angleVelocity += angleAccel;
+  function reset() {
+    angle = Math.PI / 4;
+    angularVelocity = 0;
+    angularAcceleration = 0;
+    spider.x = anchor.x + ropeLength * Math.sin(angle);
+    spider.y = anchor.y + ropeLength * Math.cos(angle);
+    spider.vx = 0;
+    spider.vy = 0;
+    isSwinging = true;
+    isHolding = false;
+    score = 0;
+    cameraX = 0;
+  }
 
-      if (holding) {
-        // Boost momentum while holding to get more swing power
-        spider.angleVelocity += (spider.angle > 0 ? 1 : -1) * momentumBoost;
+  function update() {
+    if (isSwinging) {
+      // Pendulum physics: angular acceleration = (-g / L) * sin(theta)
+      angularAcceleration = (-gravity / ropeLength) * Math.sin(angle);
+
+      // If holding, apply force in direction of swing to gain momentum
+      if (isHolding) {
+        angularAcceleration += swingForce * (angularVelocity > 0 ? 1 : -1);
       }
 
-      // Clamp angular velocity so it doesn’t get too wild
-      if (spider.angleVelocity > maxAngularVelocity) spider.angleVelocity = maxAngularVelocity;
-      if (spider.angleVelocity < -maxAngularVelocity) spider.angleVelocity = -maxAngularVelocity;
+      angularVelocity += angularAcceleration;
+      angularVelocity *= friction; // damping friction
+      // Clamp velocity for smoothness
+      if (angularVelocity > maxAngularVelocity) angularVelocity = maxAngularVelocity;
+      if (angularVelocity < -maxAngularVelocity) angularVelocity = -maxAngularVelocity;
 
-      spider.angleVelocity *= 0.995; // friction / damping
-      spider.angle += spider.angleVelocity;
+      angle += angularVelocity;
 
-      // Update spider position along arc
-      spider.x = anchor.x + ropeLength * Math.sin(spider.angle);
-      spider.y = anchor.y + ropeLength * Math.cos(spider.angle);
+      spider.x = anchor.x + ropeLength * Math.sin(angle);
+      spider.y = anchor.y + ropeLength * Math.cos(angle);
 
-      spider.vx = ropeLength * spider.angleVelocity * Math.cos(spider.angle);
-      spider.vy = -ropeLength * spider.angleVelocity * Math.sin(spider.angle);
+      // Score increases by horizontal distance traveled forward (relative to camera)
+      const distanceTravelled = spider.x - cameraX;
+      if (distanceTravelled > score) {
+        score = Math.floor(distanceTravelled);
+      }
     } else {
-      // In flight: normal physics
+      // In flight
       spider.vy += gravity;
       spider.x += spider.vx;
       spider.y += spider.vy;
 
-      // Check if near building to latch onto rope again
-      for (const b of buildings) {
-        if (Math.abs(spider.x - (b.x + buildingWidth / 2)) < 15 &&
-            spider.y > canvas.height - b.height - spider.radius &&
-            spider.vy >= 0) {
-          // Attach to building and reset swing state
-          anchor.x = b.x + buildingWidth / 2;
-          anchor.y = canvas.height - b.height;
-          spider.angle = Math.atan2(spider.x - anchor.x, spider.y - anchor.y);
-          spider.angleVelocity = spider.vx * 0.02; // small initial swing speed based on horizontal speed
-          ropeLength = Math.hypot(spider.x - anchor.x, spider.y - anchor.y);
-          swinging = true;
-          spider.vx = 0;
-          spider.vy = 0;
-          break;
-        }
+      // Camera follows spider smoothly
+      cameraX += (spider.x - cameraX - 150) * 0.1;
+
+      // Check if spider is close enough to grab next rope point automatically
+      // For this demo: rope point is fixed but we allow "re-swing" when close horizontally and below anchor
+      if (spider.y > anchor.y && Math.abs(spider.x - anchor.x) < ropeLength + 50) {
+        isSwinging = true;
+        angle = Math.atan2(spider.x - anchor.x, spider.y - anchor.y);
+        angularVelocity = spider.vx * 0.02; // initial angular velocity from flight vx
+        spider.vx = 0;
+        spider.vy = 0;
       }
 
-      // Reset if fallen below screen
+      // Reset if falls off screen
       if (spider.y > canvas.height + 100) {
         reset();
       }
     }
-
-    // Smooth camera follow
-    cameraX += (spider.x - cameraX - 150) * 0.12;
   }
 
-  function reset() {
-    swinging = false;
-    holding = false;
-    spider.x = 150;
-    spider.y = canvas.height / 2;
-    spider.vx = 0;
-    spider.vy = 0;
-    anchor.x = spider.x;
-    anchor.y = 120;
-    spider.angle = Math.PI / 3;
-    spider.angleVelocity = 0;
-    ropeLength = ropeLengthDefault;
-  }
-
-  // Draw simple stickman swinging on rope
   function drawSpider(x, y) {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
 
-    // Head (circle)
+    // Head - red circle
     ctx.fillStyle = '#ff0000';
     ctx.beginPath();
     ctx.arc(x, y - 40, 15, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body (line)
+    // Body - black line
     ctx.beginPath();
     ctx.moveTo(x, y - 25);
     ctx.lineTo(x, y + 20);
     ctx.stroke();
 
-    // Arms (lines)
+    // Arms
     ctx.beginPath();
     ctx.moveTo(x, y - 10);
     ctx.lineTo(x - 25, y + 10);
@@ -203,7 +201,7 @@
     ctx.lineTo(x + 25, y + 10);
     ctx.stroke();
 
-    // Legs (lines)
+    // Legs
     ctx.beginPath();
     ctx.moveTo(x, y + 20);
     ctx.lineTo(x - 20, y + 50);
@@ -211,14 +209,13 @@
     ctx.lineTo(x + 20, y + 50);
     ctx.stroke();
 
-    // Eyes (simple white ovals)
+    // Eyes
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     ctx.ellipse(x - 6, y - 44, 5, 8, 0.2, 0, Math.PI * 2);
     ctx.ellipse(x + 6, y - 44, 5, 8, -0.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Pupils
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.ellipse(x - 6, y - 44, 2.5, 4.5, 0.2, 0, Math.PI * 2);
@@ -226,30 +223,12 @@
     ctx.fill();
   }
 
-  // Draw buildings simple rectangles
-  function drawBuilding(b) {
-    const bx = b.x - cameraX;
-    ctx.fillStyle = '#222';
-    ctx.fillRect(bx, canvas.height - b.height, buildingWidth, b.height);
-    // windows or details
-    ctx.fillStyle = '#444';
-    for (let i = 0; i < b.height / 30; i++) {
-      ctx.fillRect(bx + 10, canvas.height - b.height + i * 30 + 5, 20, 15);
-      ctx.fillRect(bx + 50, canvas.height - b.height + i * 30 + 5, 20, 15);
-    }
-  }
-
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw buildings
-    for (const b of buildings) {
-      drawBuilding(b);
-    }
-
-    // Draw rope
+    // Draw rope line
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(anchor.x - cameraX, anchor.y);
     ctx.lineTo(spider.x - cameraX, spider.y);
@@ -257,11 +236,20 @@
 
     // Draw spider stickman
     drawSpider(spider.x - cameraX, spider.y);
+
+    // Draw ground line
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-1000 - cameraX, canvas.height - 10);
+    ctx.lineTo(10000 - cameraX, canvas.height - 10);
+    ctx.stroke();
   }
 
   function loop() {
     update();
     draw();
+    scoreEl.textContent = 'Score: ' + score;
     requestAnimationFrame(loop);
   }
 
