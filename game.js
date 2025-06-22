@@ -1,6 +1,12 @@
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 let score = 0;
 let best = localStorage.getItem('swingHeroBest') || 0;
@@ -21,9 +27,15 @@ function gameLoop() {
     if (!running) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Draw dark background
+    ctx.fillStyle = "#0a0a1f";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Update score
     score++;
     document.getElementById('score').textContent = score;
 
+    // Apply swing physics if rope is attached
     if (attached) {
         let dx = player.x - player.anchorX;
         let dy = player.y - player.anchorY;
@@ -40,10 +52,12 @@ function gameLoop() {
         player.vy += gravity;
     }
 
+    // Update player position
     player.x += player.vx;
     player.y += player.vy;
 
-    if (player.y > canvas.height) {
+    // If player falls, reset
+    if (player.y > canvas.height + 100) {
         running = false;
         if (score > best) {
             best = score;
@@ -57,22 +71,31 @@ function gameLoop() {
         return;
     }
 
+    // Draw rope if attached
     if (attached) {
         ctx.beginPath();
         ctx.moveTo(player.anchorX, player.anchorY);
         ctx.lineTo(player.x, player.y);
-        ctx.strokeStyle = '#aaa';
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]); // spider web style
         ctx.stroke();
+        ctx.setLineDash([]);
     }
 
+    // Draw the player
     ctx.beginPath();
     ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'red';
+    ctx.fillStyle = 'red'; // spider-suit color
     ctx.fill();
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
     requestAnimationFrame(gameLoop);
 }
 
+// Remote OK button (Enter) toggles swing
 document.body.addEventListener('keydown', (e) => {
     if (e.code === 'Enter') {
         if (!attached) {
