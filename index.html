@@ -2,39 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Spider-Man Swing Game - Bush TV Fix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Spider-Man Swing 3D Mobile</title>
 <style>
-  body {
-    margin: 0; background: #87ceeb; overflow: hidden;
+  body, html {
+    margin: 0; padding: 0; overflow: hidden;
+    background: linear-gradient(to top, #001022 0%, #87ceeb 100%);
     font-family: Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
   canvas {
-    display: block; background: #87ceeb;
-  }
-  #log {
-    position: fixed;
-    bottom: 0; left: 0;
-    background: rgba(0,0,0,0.5);
-    color: #fff;
-    font-size: 14px;
-    max-height: 100px;
-    overflow-y: auto;
-    width: 100%;
-    font-family: monospace;
-    padding: 4px;
-    box-sizing: border-box;
+    display: block;
+    background: transparent;
+    touch-action: none;
   }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="log"></div>
 <script>
 (() => {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  const logEl = document.getElementById('log');
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -43,24 +32,20 @@
   resize();
   window.addEventListener('resize', resize);
 
-  // Logging helper (only last 10 logs)
-  const logs = [];
-  function log(text) {
-    logs.push(text);
-    if (logs.length > 10) logs.shift();
-    logEl.textContent = logs.join('\n');
-  }
-
   // Game variables
-  const gravity = 0.6;
+  const gravity = 0.7;
   let swinging = false;
-  let ropeLength = 200;
+  let ropeLength = 220;
+
+  // Spider-Man 3D position (x, y, z) - z adds "depth"
   let spider = {
     x: 150,
-    y: canvas.height / 2,
-    radius: 20,
+    y: window.innerHeight / 2,
+    z: 0,
+    radius: 25,
     vx: 0,
     vy: 0,
+    vz: 0,
     angle: Math.PI / 4,
     angleVelocity: 0,
   };
@@ -68,19 +53,21 @@
   const anchor = {
     x: spider.x,
     y: 100,
+    z: 0,
   };
 
-  // Buildings
+  // Buildings 3D style
   const buildings = [];
-  const buildingWidth = 80;
-  const buildingGap = 200;
+  const buildingWidth = 100;
+  const buildingGap = 230;
 
   function generateBuildings() {
     buildings.length = 0;
     let x = 0;
-    while (x < canvas.width * 3) {
-      const height = 100 + Math.random() * 300;
-      buildings.push({ x, height });
+    while (x < canvas.width * 4) {
+      const height = 100 + Math.random() * 320;
+      const depth = 50 + Math.random() * 70; // depth for 3D effect
+      buildings.push({ x, height, depth });
       x += buildingWidth + buildingGap;
     }
   }
@@ -88,117 +75,190 @@
 
   let cameraX = 0;
 
-  // Key listeners robust for TV remote:
-  window.addEventListener('keydown', e => {
-    log(`keydown: key='${e.key}' code='${e.code}' keyCode=${e.keyCode}`);
+  // Project 3D to 2D
+  function project3D(x, y, z) {
+    const focalLength = 600;
+    const scale = focalLength / (focalLength + z);
+    return {
+      x: (x - cameraX) * scale + canvas.width / 3,
+      y: y * scale + (canvas.height / 3),
+      scale,
+    };
+  }
 
-    if (e.key === 'ArrowUp' || e.code === 'ArrowUp' || e.keyCode === 38) {
-      e.preventDefault();
-      swinging = true;
-    }
+  // Controls: touch for mobile
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    swinging = true;
+  });
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    swinging = false;
   });
 
-  window.addEventListener('keyup', e => {
-    log(`keyup: key='${e.key}' code='${e.code}' keyCode=${e.keyCode}`);
-
-    if (e.key === 'ArrowUp' || e.code === 'ArrowUp' || e.keyCode === 38) {
-      e.preventDefault();
-      swinging = false;
-    }
+  // Also add mouse for desktop testing
+  canvas.addEventListener('mousedown', e => {
+    swinging = true;
+  });
+  canvas.addEventListener('mouseup', e => {
+    swinging = false;
   });
 
   function update() {
     if (swinging) {
-      // Swinging physics: angular acceleration
+      // Swing physics with damping
       const angleAccel = -0.01 * Math.sin(spider.angle);
       spider.angleVelocity += angleAccel;
-      spider.angleVelocity *= 0.99; // damping
+      spider.angleVelocity *= 0.97;
       spider.angle += spider.angleVelocity;
 
-      // Update spider position along the swing arc
+      // Update spider 3D position along arc
       spider.x = anchor.x + ropeLength * Math.sin(spider.angle);
       spider.y = anchor.y + ropeLength * Math.cos(spider.angle);
+      spider.z = 30 * Math.sin(spider.angle * 2); // Add some z swing for 3D depth
+
       spider.vx = ropeLength * spider.angleVelocity * Math.cos(spider.angle);
       spider.vy = -ropeLength * spider.angleVelocity * Math.sin(spider.angle);
     } else {
-      // Free fall
+      // Free fall with gravity and depth fall
       spider.vy += gravity;
+      spider.vz += 0.3; // falling "depth"
       spider.x += spider.vx;
       spider.y += spider.vy;
+      spider.z += spider.vz;
 
-      // Update anchor point to next building if spider is near
+      // Attach to building if close enough
       for (const b of buildings) {
-        if (Math.abs(spider.x - (b.x + buildingWidth / 2)) < 10 &&
-            spider.y > canvas.height - b.height - spider.radius) {
-          // Attach rope to this building
+        if (Math.abs(spider.x - (b.x + buildingWidth / 2)) < 12 &&
+            spider.y > canvas.height - b.height - spider.radius &&
+            spider.z > 0) {
           anchor.x = b.x + buildingWidth / 2;
           anchor.y = canvas.height - b.height;
+          anchor.z = 0;
           spider.angle = Math.atan2(spider.x - anchor.x, spider.y - anchor.y);
           spider.angleVelocity = 0;
           ropeLength = Math.hypot(spider.x - anchor.x, spider.y - anchor.y);
+          spider.z = 0;
+          spider.vz = 0;
           swinging = true;
           break;
         }
       }
 
-      // Hit ground (game over)
-      if (spider.y > canvas.height - spider.radius) {
+      // Reset if hit ground or too deep
+      if (spider.y > canvas.height - spider.radius || spider.z > 300) {
         reset();
       }
     }
 
-    // Move camera right as spider moves
-    cameraX = Math.min(spider.x - 150, canvas.width);
+    // Camera follows spider smoothly
+    cameraX += (spider.x - cameraX - 150) * 0.1;
   }
 
   function reset() {
     swinging = false;
     spider.x = 150;
     spider.y = canvas.height / 2;
+    spider.z = 0;
     spider.vx = 0;
     spider.vy = 0;
+    spider.vz = 0;
     anchor.x = spider.x;
     anchor.y = 100;
+    anchor.z = 0;
     spider.angle = Math.PI / 4;
     spider.angleVelocity = 0;
+  }
+
+  function drawBuilding(b) {
+    const front = project3D(b.x, canvas.height - b.height, 0);
+    const back = project3D(b.x, canvas.height - b.height, -b.depth);
+    const frontBase = project3D(b.x, canvas.height, 0);
+    const backBase = project3D(b.x, canvas.height, -b.depth);
+
+    // Front face
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(front.x, front.y);
+    ctx.lineTo(frontBase.x, frontBase.y);
+    ctx.lineTo(backBase.x, backBase.y);
+    ctx.lineTo(back.x, back.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Top face
+    ctx.fillStyle = '#555';
+    ctx.beginPath();
+    ctx.moveTo(front.x, front.y);
+    ctx.lineTo(back.x, back.y);
+    ctx.lineTo(back.x + buildingWidth * front.scale, back.y);
+    ctx.lineTo(front.x + buildingWidth * front.scale, front.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Side face
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.moveTo(front.x + buildingWidth * front.scale, front.y);
+    ctx.lineTo(frontBase.x + buildingWidth * frontBase.scale, frontBase.y);
+    ctx.lineTo(backBase.x + buildingWidth * backBase.scale, backBase.y);
+    ctx.lineTo(back.x + buildingWidth * back.scale, back.y);
+    ctx.closePath();
+    ctx.fill();
   }
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw buildings
-    ctx.fillStyle = '#444';
-    for (const b of buildings) {
-      const bx = b.x - cameraX;
-      ctx.fillRect(bx, canvas.height - b.height, buildingWidth, b.height);
-    }
+    // Draw buildings sorted by depth (farther back first)
+    buildings.sort((a,b) => (b.x + b.depth) - (a.x + a.depth));
+    buildings.forEach(drawBuilding);
 
-    // Draw rope
+    // Draw rope (3D projection)
+    const anchor2D = project3D(anchor.x, anchor.y, anchor.z);
+    const spider2D = project3D(spider.x, spider.y, spider.z);
+
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4 * spider2D.scale;
     ctx.beginPath();
-    ctx.moveTo(anchor.x - cameraX, anchor.y);
-    ctx.lineTo(spider.x - cameraX, spider.y);
+    ctx.moveTo(anchor2D.x, anchor2D.y);
+    ctx.lineTo(spider2D.x, spider2D.y);
     ctx.stroke();
 
-    // Draw spider (circle)
-    ctx.fillStyle = '#ff0000';
+    // Draw spider (circle with 3D shading)
+    const spiderRadius = spider.radius * spider2D.scale;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
-    ctx.arc(spider.x - cameraX, spider.y, spider.radius, 0, Math.PI * 2);
+    ctx.ellipse(spider2D.x + spiderRadius * 0.4, spider2D.y + spiderRadius * 0.6, spiderRadius * 0.8, spiderRadius * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Spider eyes
+    // Body
+    const grad = ctx.createRadialGradient(spider2D.x - spiderRadius * 0.3, spider2D.y - spiderRadius * 0.3, spiderRadius * 0.3, spider2D.x, spider2D.y, spiderRadius);
+    grad.addColorStop(0, '#ff0000');
+    grad.addColorStop(1, '#800000');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(spider2D.x, spider2D.y, spiderRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes (white with black pupil)
+    const eyeScaleX = spiderRadius * 0.3;
+    const eyeScaleY = spiderRadius * 0.5;
+    const eyeOffsetX = spiderRadius * 0.4;
+    const eyeOffsetY = spiderRadius * -0.2;
+
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.ellipse(spider.x - cameraX - 7, spider.y - 5, 5, 8, 0.2, 0, Math.PI * 2);
-    ctx.ellipse(spider.x - cameraX + 7, spider.y - 5, 5, 8, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(spider2D.x - eyeOffsetX, spider2D.y + eyeOffsetY, eyeScaleX, eyeScaleY, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(spider2D.x + eyeOffsetX, spider2D.y + eyeOffsetY, eyeScaleX, eyeScaleY, -0.3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Spider eye pupils
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(spider.x - cameraX - 7, spider.y - 5, 2, 4, 0.2, 0, Math.PI * 2);
-    ctx.ellipse(spider.x - cameraX + 7, spider.y - 5, 2, 4, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(spider2D.x - eyeOffsetX, spider2D.y + eyeOffsetY, eyeScaleX * 0.4, eyeScaleY * 0.7, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(spider2D.x + eyeOffsetX, spider2D.y + eyeOffsetY, eyeScaleX * 0.4, eyeScaleY * 0.7, -0.3, 0, Math.PI * 2);
     ctx.fill();
   }
 
