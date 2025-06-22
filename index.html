@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spider-Man Swing Game</title>
+<style>
+  body {
+    margin: 0; background: #87ceeb; overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+  canvas {
+    display: block; background: #87ceeb;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // Resize canvas to full screen
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Game variables
+  const gravity = 0.6;
+  let swinging = false;
+  let ropeLength = 200;
+  let spider = {
+    x: 150,
+    y: canvas.height / 2,
+    radius: 20,
+    vx: 0,
+    vy: 0,
+    angle: Math.PI / 4,
+    angleVelocity: 0,
+  };
+
+  const anchor = {
+    x: spider.x,
+    y: 100,
+  };
+
+  // Buildings
+  const buildings = [];
+  const buildingWidth = 80;
+  const buildingGap = 200;
+
+  function generateBuildings() {
+    buildings.length = 0;
+    let x = 0;
+    while (x < canvas.width * 3) {
+      const height = 100 + Math.random() * 300;
+      buildings.push({ x, height });
+      x += buildingWidth + buildingGap;
+    }
+  }
+  generateBuildings();
+
+  let cameraX = 0;
+
+  // Controls
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp') {
+      swinging = true;
+    }
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'ArrowUp') {
+      swinging = false;
+    }
+  });
+
+  function update() {
+    if (swinging) {
+      // Swinging physics: angular acceleration
+      const angleAccel = -0.01 * Math.sin(spider.angle);
+      spider.angleVelocity += angleAccel;
+      spider.angleVelocity *= 0.99; // damping
+      spider.angle += spider.angleVelocity;
+
+      // Update spider position along the swing arc
+      spider.x = anchor.x + ropeLength * Math.sin(spider.angle);
+      spider.y = anchor.y + ropeLength * Math.cos(spider.angle);
+      spider.vx = ropeLength * spider.angleVelocity * Math.cos(spider.angle);
+      spider.vy = -ropeLength * spider.angleVelocity * Math.sin(spider.angle);
+    } else {
+      // Free fall
+      spider.vy += gravity;
+      spider.x += spider.vx;
+      spider.y += spider.vy;
+
+      // Update anchor point to next building if spider is near
+      for (const b of buildings) {
+        if (Math.abs(spider.x - (b.x + buildingWidth / 2)) < 10 &&
+            spider.y > canvas.height - b.height - spider.radius) {
+          // Attach rope to this building
+          anchor.x = b.x + buildingWidth / 2;
+          anchor.y = canvas.height - b.height;
+          spider.angle = Math.atan2(spider.x - anchor.x, spider.y - anchor.y);
+          spider.angleVelocity = 0;
+          ropeLength = Math.hypot(spider.x - anchor.x, spider.y - anchor.y);
+          swinging = true;
+          break;
+        }
+      }
+
+      // Hit ground (game over)
+      if (spider.y > canvas.height - spider.radius) {
+        reset();
+      }
+    }
+
+    // Move camera right as spider moves
+    cameraX = Math.min(spider.x - 150, canvas.width);
+
+  }
+
+  function reset() {
+    swinging = false;
+    spider.x = 150;
+    spider.y = canvas.height / 2;
+    spider.vx = 0;
+    spider.vy = 0;
+    anchor.x = spider.x;
+    anchor.y = 100;
+    spider.angle = Math.PI / 4;
+    spider.angleVelocity = 0;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw buildings
+    ctx.fillStyle = '#444';
+    for (const b of buildings) {
+      const bx = b.x - cameraX;
+      ctx.fillRect(bx, canvas.height - b.height, buildingWidth, b.height);
+    }
+
+    // Draw rope
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(anchor.x - cameraX, anchor.y);
+    ctx.lineTo(spider.x - cameraX, spider.y);
+    ctx.stroke();
+
+    // Draw spider (circle)
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(spider.x - cameraX, spider.y, spider.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Spider eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(spider.x - cameraX - 7, spider.y - 5, 5, 8, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(spider.x - cameraX + 7, spider.y - 5, 5, 8, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Spider eye pupils
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(spider.x - cameraX - 7, spider.y - 5, 2, 4, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(spider.x - cameraX + 7, spider.y - 5, 2, 4, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  reset();
+  loop();
+
+})();
+</script>
+</body>
+</html>
