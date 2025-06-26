@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smooth Spider Swing with City & Sound</title>
+<title>Stickman Swinger</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
   html, body {
@@ -31,7 +31,7 @@ canvas.width = W; canvas.height = H;
 
 const whoosh = document.getElementById("whoosh");
 
-// Background city skyline
+// Buildings
 const skyline = [];
 for(let i=0; i<20; i++){
   const w = 100 + Math.random()*100;
@@ -50,17 +50,46 @@ for(let i=0; i<10; i++){
   });
 }
 
-let score=0;
-const scoreEl = document.getElementById("score");
-
 let ropeLength = 300, angle = Math.PI/3, angularVelocity=0, angularAcceleration=0;
 const gravity = 0.4, damping=0.992, swingBoost=0.001;
 let spider = {x:0,y:0,vx:0,vy:0,radius:18};
-
 let anchors = [], anchorIndex=0;
 let isSwinging=true, isHolding=false, cameraX=0;
+let score=0, scoreOffset = 0;
+const scoreEl = document.getElementById("score");
 
-// Create anchors
+// Particles
+let particles = [];
+function createLatchParticles(x, y) {
+  for(let i=0; i<15; i++){
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      alpha: 1
+    });
+  }
+}
+function updateParticles() {
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= 0.03;
+  });
+  particles = particles.filter(p => p.alpha > 0);
+}
+function drawParticles() {
+  ctx.fillStyle = "white";
+  particles.forEach(p => {
+    ctx.globalAlpha = p.alpha;
+    ctx.beginPath();
+    ctx.arc(p.x - cameraX, p.y, 3, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// Anchors
 function generateAnchors(){
   anchors=[];
   let x=150;
@@ -81,7 +110,9 @@ function updateSpiderPosFromAngle(){
 function resetGame(){
   anchorIndex=0; angle=Math.PI/3; angularVelocity=0;
   isSwinging= true; isHolding=false; updateSpiderPosFromAngle();
-  spider.vx=0; spider.vy=0; cameraX=0; score=0;
+  spider.vx=0; spider.vy=0; cameraX=0;
+  scoreOffset = Math.floor(spider.x);
+  score = 0;
 }
 function findNearestAnchor(){
   let nearest=null, minDist=1e9;
@@ -94,7 +125,6 @@ function findNearestAnchor(){
   });
   return nearest;
 }
-
 function playWhoosh(){
   whoosh.currentTime = 0;
   whoosh.play();
@@ -109,30 +139,44 @@ function update(){
     angularVelocity *= damping;
     angle += angularVelocity;
     updateSpiderPosFromAngle();
-    if(spider.x - cameraX > score) score = Math.floor(spider.x - cameraX);
+
+    const dist = Math.hypot(spider.x - anchor.x, spider.y - anchor.y);
+    if (dist > ropeLength + 10) angularVelocity *= -0.2;
+
+    score = Math.floor(spider.x - cameraX - scoreOffset);
   } else {
-    spider.vy += gravity; spider.x += spider.vx; spider.y += spider.vy;
+    spider.vy += gravity;
+    spider.x += spider.vx;
+    spider.y += spider.vy;
     cameraX += (spider.x - cameraX - 150)*0.05;
+
     if(spider.y > H+200 || spider.x < cameraX-200) resetGame();
+
+    const near = findNearestAnchor();
+    if(near && near.dist < 160){
+      const dx = near.anchor.x - spider.x;
+      const dy = near.anchor.y - spider.y;
+      spider.vx += dx * 0.0015;
+      spider.vy += dy * 0.0015;
+    }
   }
 
-  // Move clouds
   clouds.forEach(cl=>{
     cl.x += cl.speed;
     if(cl.x > W+50) cl.x = -cl.w;
   });
+
+  updateParticles();
 }
 
 function drawBackground(){
-  // Sky gradient already via CSS
-  // Draw clouds
   ctx.fillStyle = "rgba(255,255,255,0.8)";
   clouds.forEach(cl=>{
     ctx.beginPath();
     ctx.ellipse(cl.x - cameraX*0.2, cl.y, cl.w, cl.w*0.6, 0, 0, 2*Math.PI);
     ctx.fill();
   });
-  // Draw skyline
+
   ctx.fillStyle = "#111";
   skyline.forEach(b=>{
     const x = b.x - cameraX*0.3;
@@ -141,6 +185,12 @@ function drawBackground(){
 }
 
 function drawSpider(x,y){
+  const faceDir = isSwinging ? (angularVelocity > 0 ? 1 : -1) : 1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(faceDir, 1);
+  ctx.translate(-x, -y);
+
   ctx.lineWidth=4; ctx.strokeStyle="#000"; ctx.fillStyle="#e30c0c";
   ctx.beginPath();
   ctx.arc(x, y-20,12,0,2*Math.PI); ctx.fill(); ctx.stroke();
@@ -151,20 +201,23 @@ function drawSpider(x,y){
   ctx.moveTo(x,y+20); ctx.lineTo(x-10,y+40);
   ctx.moveTo(x,y+20); ctx.lineTo(x+10,y+40);
   ctx.stroke();
+
+  ctx.restore();
 }
 
 function drawRope(){
   const a=getAnchor();
+  const ropeOffset = Math.sin(Date.now()*0.01) * 4;
   ctx.lineWidth=2; ctx.strokeStyle="#fff";
   ctx.beginPath();
   ctx.moveTo(a.x - cameraX, a.y);
-  ctx.lineTo(spider.x - cameraX, spider.y);
+  ctx.lineTo(spider.x - cameraX + ropeOffset, spider.y);
   ctx.stroke();
 }
 
 function drawBuildings(){
-  ctx.fillStyle="#222";
-  anchors.forEach(a=>{
+  anchors.forEach((a,i)=>{
+    ctx.fillStyle = (i % 5 === 0) ? "#4cf" : "#222";
     ctx.fillRect(a.x - 25 - cameraX, a.y, 50, H - a.y);
   });
 }
@@ -173,6 +226,7 @@ function draw(){
   ctx.clearRect(0,0,W,H);
   drawBackground();
   drawBuildings();
+  drawParticles();
   if(isSwinging) drawRope();
   drawSpider(spider.x - cameraX, spider.y);
   scoreEl.textContent = "Score: " + score;
@@ -182,48 +236,33 @@ function loop(){
   update(); draw(); requestAnimationFrame(loop);
 }
 
-canvas.addEventListener("touchstart", ()=>{
-  if(isSwinging) isHolding = true;
-  else {
-    const near = findNearestAnchor();
-    if(near && near.dist < 200){
-      anchorIndex = near.index;
-      angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
-      angularVelocity = 0;
-      isSwinging = true;
-      playWhoosh();
-    }
+function attemptLatch(){
+  const near = findNearestAnchor();
+  if(near && near.dist < 200){
+    anchorIndex = near.index;
+    angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
+    angularVelocity = 0;
+    isSwinging = true;
+    playWhoosh();
+    createLatchParticles(spider.x, spider.y);
   }
-});
-canvas.addEventListener("touchend", ()=>{
-  if(isSwinging){
-    isHolding = false;
-    isSwinging = false;
-    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI/2);
-    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI/2);
-  }
-});
+}
 
-canvas.addEventListener("mousedown", ()=>{
-  if(isSwinging) isHolding = true;
-  else {
-    const near = findNearestAnchor();
-    if(near && near.dist < 200){
-      anchorIndex = near.index;
-      angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
-      angularVelocity = 0;
-      isSwinging = true;
-      playWhoosh();
-    }
-  }
+["touchstart", "mousedown"].forEach(evt => {
+  canvas.addEventListener(evt, ()=>{
+    if(isSwinging) isHolding = true;
+    else attemptLatch();
+  });
 });
-canvas.addEventListener("mouseup", ()=>{
-  if(isSwinging){
-    isHolding = false;
-    isSwinging = false;
-    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI/2);
-    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI/2);
-  }
+["touchend", "mouseup"].forEach(evt => {
+  canvas.addEventListener(evt, ()=>{
+    if(isSwinging){
+      isHolding = false;
+      isSwinging = false;
+      spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI/2);
+      spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI/2);
+    }
+  });
 });
 
 resetGame();
