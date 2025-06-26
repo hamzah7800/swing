@@ -2,235 +2,227 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smoother Swing Game</title>
+<title>Smooth Spider Swing with City & Sound</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
   html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
+    margin:0; padding:0; overflow:hidden;
     background: linear-gradient(to top, #001830, #87ceeb);
-    font-family: sans-serif;
     touch-action: none;
   }
-  canvas {
-    display: block;
-  }
+  canvas { display:block; }
   #score {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    font-size: 24px;
-    color: white;
-    text-shadow: 2px 2px 4px #000;
+    position:absolute; top:20px; left:20px;
+    font-size:24px; color:white;
+    text-shadow:2px 2px 4px #000;
   }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
 <div id="score">Score: 0</div>
+<audio id="whoosh" src="https://freesound.org/data/previews/256/256113_3263906-lq.mp3"></audio>
+
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-let W = window.innerWidth, H = window.innerHeight;
-canvas.width = W;
-canvas.height = H;
+let W = innerWidth, H = innerHeight;
+canvas.width = W; canvas.height = H;
 
-let score = 0;
+const whoosh = document.getElementById("whoosh");
+
+// Background city skyline
+const skyline = [];
+for(let i=0; i<20; i++){
+  const w = 100 + Math.random()*100;
+  const h = 200 + Math.random()*150;
+  skyline.push({x: i*w*1.5, y: H - h - 50, w, h});
+}
+
+// Clouds
+const clouds = [];
+for(let i=0; i<10; i++){
+  clouds.push({
+    x: Math.random()*W,
+    y: 50 + Math.random()*150,
+    w: 80 + Math.random()*60,
+    speed: 0.2 + Math.random()*0.3
+  });
+}
+
+let score=0;
 const scoreEl = document.getElementById("score");
 
-let ropeLength = 300;
-let angle = Math.PI / 3;
-let angularVelocity = 0;
-let angularAcceleration = 0;
-let gravity = 0.4;
-let damping = 0.992;
-let swingBoost = 0.001;
-let spider = { x: 0, y: 0, vx: 0, vy: 0, radius: 18 };
+let ropeLength = 300, angle = Math.PI/3, angularVelocity=0, angularAcceleration=0;
+const gravity = 0.4, damping=0.992, swingBoost=0.001;
+let spider = {x:0,y:0,vx:0,vy:0,radius:18};
 
-let anchors = [];
-let anchorIndex = 0;
-let isSwinging = true;
-let isHolding = false;
-let cameraX = 0;
+let anchors = [], anchorIndex=0;
+let isSwinging=true, isHolding=false, cameraX=0;
 
-function generateAnchors() {
-  anchors = [];
-  let x = 150;
-  for (let i = 0; i < 60; i++) {
-    let height = 200 + Math.random() * 250;
-    anchors.push({ x, y: H - height });
-    x += 250 + Math.random() * 200;
+// Create anchors
+function generateAnchors(){
+  anchors=[];
+  let x=150;
+  for(let i=0;i<60;i++){
+    const height = 200 + Math.random()*250;
+    anchors.push({x,y:H-height});
+    x += 250 + Math.random()*200;
   }
 }
 generateAnchors();
 
-function getAnchor() {
-  return anchors[anchorIndex];
+function getAnchor(){return anchors[anchorIndex];}
+function updateSpiderPosFromAngle(){
+  const a=getAnchor();
+  spider.x = a.x + ropeLength*Math.sin(angle);
+  spider.y = a.y + ropeLength*Math.cos(angle);
 }
-
-function updateSpiderPosFromAngle() {
-  const a = getAnchor();
-  spider.x = a.x + ropeLength * Math.sin(angle);
-  spider.y = a.y + ropeLength * Math.cos(angle);
+function resetGame(){
+  anchorIndex=0; angle=Math.PI/3; angularVelocity=0;
+  isSwinging= true; isHolding=false; updateSpiderPosFromAngle();
+  spider.vx=0; spider.vy=0; cameraX=0; score=0;
 }
-
-function resetGame() {
-  anchorIndex = 0;
-  angle = Math.PI / 3;
-  angularVelocity = 0;
-  isSwinging = true;
-  isHolding = false;
-  updateSpiderPosFromAngle();
-  spider.vx = 0;
-  spider.vy = 0;
-  cameraX = 0;
-  score = 0;
-}
-
-function findNearestAnchor() {
-  let nearest = null;
-  let minDist = Infinity;
-  anchors.forEach((a, i) => {
-    const dx = spider.x - a.x;
-    const dy = spider.y - a.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist < minDist && i > anchorIndex) {
-      minDist = dist;
-      nearest = { anchor: a, index: i, dist };
+function findNearestAnchor(){
+  let nearest=null, minDist=1e9;
+  anchors.forEach((a,i)=>{
+    const dx=spider.x-a.x, dy=spider.y-a.y;
+    const dist=Math.hypot(dx,dy);
+    if(dist<minDist && i>anchorIndex){
+      minDist=dist; nearest={anchor:a, index:i, dist};
     }
   });
   return nearest;
 }
 
-function update() {
-  const anchor = getAnchor();
+function playWhoosh(){
+  whoosh.currentTime = 0;
+  whoosh.play();
+}
 
-  if (isSwinging) {
-    angularAcceleration = (-gravity / ropeLength) * Math.sin(angle);
-    if (isHolding) {
-      angularAcceleration += swingBoost * (angularVelocity > 0 ? 1 : -1);
-    }
+function update(){
+  const anchor=getAnchor();
+  if(isSwinging){
+    angularAcceleration = (-gravity/ropeLength)*Math.sin(angle);
+    if(isHolding) angularAcceleration += swingBoost*(angularVelocity>0?1:-1);
     angularVelocity += angularAcceleration;
     angularVelocity *= damping;
     angle += angularVelocity;
     updateSpiderPosFromAngle();
-    if (spider.x - cameraX > score) {
-      score = Math.floor(spider.x - cameraX);
-    }
+    if(spider.x - cameraX > score) score = Math.floor(spider.x - cameraX);
   } else {
-    spider.vy += gravity;
-    spider.x += spider.vx;
-    spider.y += spider.vy;
-
-    // Camera follows Spider
-    cameraX += (spider.x - cameraX - 150) * 0.05;
-
-    if (spider.y > H + 200 || spider.x < cameraX - 200) {
-      resetGame();
-    }
+    spider.vy += gravity; spider.x += spider.vx; spider.y += spider.vy;
+    cameraX += (spider.x - cameraX - 150)*0.05;
+    if(spider.y > H+200 || spider.x < cameraX-200) resetGame();
   }
+
+  // Move clouds
+  clouds.forEach(cl=>{
+    cl.x += cl.speed;
+    if(cl.x > W+50) cl.x = -cl.w;
+  });
 }
 
-function drawSpider(x, y) {
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = "#000";
-  ctx.fillStyle = "#e30c0c";
+function drawBackground(){
+  // Sky gradient already via CSS
+  // Draw clouds
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  clouds.forEach(cl=>{
+    ctx.beginPath();
+    ctx.ellipse(cl.x - cameraX*0.2, cl.y, cl.w, cl.w*0.6, 0, 0, 2*Math.PI);
+    ctx.fill();
+  });
+  // Draw skyline
+  ctx.fillStyle = "#111";
+  skyline.forEach(b=>{
+    const x = b.x - cameraX*0.3;
+    ctx.fillRect(x, b.y, b.w, b.h);
+  });
+}
 
+function drawSpider(x,y){
+  ctx.lineWidth=4; ctx.strokeStyle="#000"; ctx.fillStyle="#e30c0c";
   ctx.beginPath();
-  ctx.arc(x, y - 20, 12, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.stroke();
-
+  ctx.arc(x, y-20,12,0,2*Math.PI); ctx.fill(); ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x, y - 10);
-  ctx.lineTo(x, y + 20);
-  ctx.moveTo(x, y);
-  ctx.lineTo(x - 15, y + 10);
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + 15, y + 10);
-  ctx.moveTo(x, y + 20);
-  ctx.lineTo(x - 10, y + 40);
-  ctx.moveTo(x, y + 20);
-  ctx.lineTo(x + 10, y + 40);
+  ctx.moveTo(x,y-10); ctx.lineTo(x,y+20);
+  ctx.moveTo(x,y); ctx.lineTo(x-15,y+10);
+  ctx.moveTo(x,y); ctx.lineTo(x+15,y+10);
+  ctx.moveTo(x,y+20); ctx.lineTo(x-10,y+40);
+  ctx.moveTo(x,y+20); ctx.lineTo(x+10,y+40);
   ctx.stroke();
 }
 
-function drawRope() {
-  const anchor = getAnchor();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "#ffffff";
+function drawRope(){
+  const a=getAnchor();
+  ctx.lineWidth=2; ctx.strokeStyle="#fff";
   ctx.beginPath();
-  ctx.moveTo(anchor.x - cameraX, anchor.y);
+  ctx.moveTo(a.x - cameraX, a.y);
   ctx.lineTo(spider.x - cameraX, spider.y);
   ctx.stroke();
 }
 
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-
-  // Draw Buildings
-  ctx.fillStyle = "#222";
-  anchors.forEach(a => {
+function drawBuildings(){
+  ctx.fillStyle="#222";
+  anchors.forEach(a=>{
     ctx.fillRect(a.x - 25 - cameraX, a.y, 50, H - a.y);
   });
+}
 
-  if (isSwinging) drawRope();
-
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  drawBackground();
+  drawBuildings();
+  if(isSwinging) drawRope();
   drawSpider(spider.x - cameraX, spider.y);
-
   scoreEl.textContent = "Score: " + score;
 }
 
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
+function loop(){
+  update(); draw(); requestAnimationFrame(loop);
 }
 
-// Touch control
-canvas.addEventListener("touchstart", () => {
-  if (isSwinging) {
-    isHolding = true;
-  } else {
+canvas.addEventListener("touchstart", ()=>{
+  if(isSwinging) isHolding = true;
+  else {
     const near = findNearestAnchor();
-    if (near && near.dist < 200) {
+    if(near && near.dist < 200){
       anchorIndex = near.index;
       angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
       angularVelocity = 0;
       isSwinging = true;
+      playWhoosh();
     }
   }
 });
-canvas.addEventListener("touchend", () => {
-  if (isSwinging) {
+canvas.addEventListener("touchend", ()=>{
+  if(isSwinging){
     isHolding = false;
     isSwinging = false;
-    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI / 2);
-    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI / 2);
+    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI/2);
+    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI/2);
   }
 });
 
-// Mouse fallback
-canvas.addEventListener("mousedown", () => {
-  if (isSwinging) {
-    isHolding = true;
-  } else {
+canvas.addEventListener("mousedown", ()=>{
+  if(isSwinging) isHolding = true;
+  else {
     const near = findNearestAnchor();
-    if (near && near.dist < 200) {
+    if(near && near.dist < 200){
       anchorIndex = near.index;
       angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
       angularVelocity = 0;
       isSwinging = true;
+      playWhoosh();
     }
   }
 });
-canvas.addEventListener("mouseup", () => {
-  if (isSwinging) {
+canvas.addEventListener("mouseup", ()=>{
+  if(isSwinging){
     isHolding = false;
     isSwinging = false;
-    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI / 2);
-    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI / 2);
+    spider.vx = angularVelocity * ropeLength * Math.cos(angle + Math.PI/2);
+    spider.vy = angularVelocity * ropeLength * Math.sin(angle + Math.PI/2);
   }
 });
 
