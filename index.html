@@ -2,27 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smooth Spider Swing</title>
+<title>Smoother Swing Game</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-  body, html {
-    margin: 0; padding: 0; overflow: hidden;
-    background: linear-gradient(to top, #001022, #87ceeb);
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: linear-gradient(to top, #001830, #87ceeb);
     font-family: sans-serif;
     touch-action: none;
   }
   canvas {
     display: block;
-    background: transparent;
   }
   #score {
     position: absolute;
-    top: 15px;
+    top: 20px;
     left: 20px;
     font-size: 24px;
-    color: #fff;
-    font-weight: bold;
-    text-shadow: 1px 1px 2px #000;
+    color: white;
+    text-shadow: 2px 2px 4px #000;
   }
 </style>
 </head>
@@ -39,33 +39,28 @@ canvas.height = H;
 let score = 0;
 const scoreEl = document.getElementById("score");
 
-// Rope physics
-const ropeLength = 280;
-let angle = Math.PI / 3; // 60 degrees
+let ropeLength = 300;
+let angle = Math.PI / 3;
 let angularVelocity = 0;
 let angularAcceleration = 0;
-const gravity = 0.5;
-const damping = 0.995;
-const swingBoost = 0.0012;
+let gravity = 0.4;
+let damping = 0.992;
+let swingBoost = 0.001;
+let spider = { x: 0, y: 0, vx: 0, vy: 0, radius: 18 };
 
-// Spider
-let spider = { x: 0, y: 0, radius: 18, vx: 0, vy: 0 };
-
-// Anchor points
 let anchors = [];
 let anchorIndex = 0;
 let isSwinging = true;
 let isHolding = false;
 let cameraX = 0;
 
-// Create anchors
 function generateAnchors() {
   anchors = [];
-  let x = 100;
-  for (let i = 0; i < 50; i++) {
-    let height = 150 + Math.random() * 200;
+  let x = 150;
+  for (let i = 0; i < 60; i++) {
+    let height = 200 + Math.random() * 250;
     anchors.push({ x, y: H - height });
-    x += 200 + Math.random() * 200;
+    x += 250 + Math.random() * 200;
   }
 }
 generateAnchors();
@@ -76,9 +71,8 @@ function getAnchor() {
 
 function updateSpiderPosFromAngle() {
   const a = getAnchor();
-  const stretch = 1 + 0.05 * Math.sin(Date.now() / 200); // stretchy rope
-  spider.x = a.x + ropeLength * stretch * Math.sin(angle);
-  spider.y = a.y + ropeLength * stretch * Math.cos(angle);
+  spider.x = a.x + ropeLength * Math.sin(angle);
+  spider.y = a.y + ropeLength * Math.cos(angle);
 }
 
 function resetGame() {
@@ -92,6 +86,21 @@ function resetGame() {
   spider.vy = 0;
   cameraX = 0;
   score = 0;
+}
+
+function findNearestAnchor() {
+  let nearest = null;
+  let minDist = Infinity;
+  anchors.forEach((a, i) => {
+    const dx = spider.x - a.x;
+    const dy = spider.y - a.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < minDist && i > anchorIndex) {
+      minDist = dist;
+      nearest = { anchor: a, index: i, dist };
+    }
+  });
+  return nearest;
 }
 
 function update() {
@@ -114,26 +123,10 @@ function update() {
     spider.x += spider.vx;
     spider.y += spider.vy;
 
+    // Camera follows Spider
     cameraX += (spider.x - cameraX - 150) * 0.05;
 
-    // Auto-latch
-    for (let i = anchorIndex + 1; i < anchors.length; i++) {
-      let a = anchors[i];
-      let dx = spider.x - a.x;
-      let dy = spider.y - a.y;
-      let dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 60) {
-        anchorIndex = i;
-        angle = Math.atan2(dx, dy);
-        angularVelocity = spider.vx * 0.02;
-        isSwinging = true;
-        spider.vx = 0;
-        spider.vy = 0;
-        return;
-      }
-    }
-
-    if (spider.y > H + 150 || spider.x < cameraX - 200) {
+    if (spider.y > H + 200 || spider.x < cameraX - 200) {
       resetGame();
     }
   }
@@ -142,41 +135,31 @@ function update() {
 function drawSpider(x, y) {
   ctx.lineWidth = 4;
   ctx.strokeStyle = "#000";
-  ctx.fillStyle = "#ff2020";
+  ctx.fillStyle = "#e30c0c";
 
-  // Head
   ctx.beginPath();
   ctx.arc(x, y - 20, 12, 0, 2 * Math.PI);
   ctx.fill();
   ctx.stroke();
 
-  // Body
   ctx.beginPath();
   ctx.moveTo(x, y - 10);
   ctx.lineTo(x, y + 20);
-  ctx.stroke();
-
-  // Arms
-  ctx.beginPath();
   ctx.moveTo(x, y);
-  ctx.lineTo(x - 20, y + 10);
+  ctx.lineTo(x - 15, y + 10);
   ctx.moveTo(x, y);
-  ctx.lineTo(x + 20, y + 10);
-  ctx.stroke();
-
-  // Legs
-  ctx.beginPath();
+  ctx.lineTo(x + 15, y + 10);
   ctx.moveTo(x, y + 20);
-  ctx.lineTo(x - 15, y + 40);
+  ctx.lineTo(x - 10, y + 40);
   ctx.moveTo(x, y + 20);
-  ctx.lineTo(x + 15, y + 40);
+  ctx.lineTo(x + 10, y + 40);
   ctx.stroke();
 }
 
 function drawRope() {
   const anchor = getAnchor();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "#fff";
+  ctx.strokeStyle = "#ffffff";
   ctx.beginPath();
   ctx.moveTo(anchor.x - cameraX, anchor.y);
   ctx.lineTo(spider.x - cameraX, spider.y);
@@ -186,19 +169,17 @@ function drawRope() {
 function draw() {
   ctx.clearRect(0, 0, W, H);
 
-  // Anchors
-  ctx.fillStyle = "#333";
+  // Draw Buildings
+  ctx.fillStyle = "#222";
   anchors.forEach(a => {
-    ctx.fillRect(a.x - 10 - cameraX, a.y, 20, H - a.y);
+    ctx.fillRect(a.x - 25 - cameraX, a.y, 50, H - a.y);
   });
 
-  // Rope
   if (isSwinging) drawRope();
 
-  // Spider
   drawSpider(spider.x - cameraX, spider.y);
 
-  scoreEl.innerText = "Score: " + score;
+  scoreEl.textContent = "Score: " + score;
 }
 
 function loop() {
@@ -207,11 +188,21 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-// Touch controls
-canvas.addEventListener("touchstart", e => {
-  if (isSwinging) isHolding = true;
+// Touch control
+canvas.addEventListener("touchstart", () => {
+  if (isSwinging) {
+    isHolding = true;
+  } else {
+    const near = findNearestAnchor();
+    if (near && near.dist < 200) {
+      anchorIndex = near.index;
+      angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
+      angularVelocity = 0;
+      isSwinging = true;
+    }
+  }
 });
-canvas.addEventListener("touchend", e => {
+canvas.addEventListener("touchend", () => {
   if (isSwinging) {
     isHolding = false;
     isSwinging = false;
@@ -221,7 +212,19 @@ canvas.addEventListener("touchend", e => {
 });
 
 // Mouse fallback
-canvas.addEventListener("mousedown", () => { if (isSwinging) isHolding = true; });
+canvas.addEventListener("mousedown", () => {
+  if (isSwinging) {
+    isHolding = true;
+  } else {
+    const near = findNearestAnchor();
+    if (near && near.dist < 200) {
+      anchorIndex = near.index;
+      angle = Math.atan2(spider.x - near.anchor.x, spider.y - near.anchor.y);
+      angularVelocity = 0;
+      isSwinging = true;
+    }
+  }
+});
 canvas.addEventListener("mouseup", () => {
   if (isSwinging) {
     isHolding = false;
